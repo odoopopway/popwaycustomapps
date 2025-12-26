@@ -7,7 +7,7 @@
                     <li>Image gallery with zoom and editing features.</li>
                     <li>Customer image comparison tools.</li>
                     <li>Timeline view to track image updates.</li>
-                  </ul>""",  # HTML format description
+                  </ul>""",  
     "author": "Popway Software",
     "depends": ["base", "contacts"],
     "data": [
@@ -31,7 +31,7 @@
     "application": True,
     "installable": True,
     "website": "https://www.popwaysoftware.com",
-    "icon": "/image_hub/static/description/icon.png",  # Path to your icon image
-    "cover_image": "/image_hub/static/description/cover_image.jpg",  # Path to the cover image (JPG)
-    "license": "AGPL-3",  # License you are using (AGPL-3 in this case)
+    "icon": "/image_hub/static/description/icon.png", 
+    "cover_image": "/image_hub/static/description/cover_image.png", 
+    "license": "AGPL-3", 
 }
