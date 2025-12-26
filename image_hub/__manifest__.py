@@ -30,5 +30,8 @@
         ],
     },
     "application": True,
-    "installable": True
+    "installable": True,
+    "icon": "/image_hub/static/description/icon.png",  
+    "cover_image": "/image_hub/static/description/cover_image.jpg",  
+    "license": "AGPL-3",
 }
