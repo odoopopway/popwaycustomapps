@@ -1,0 +1,10 @@
+/* Only apply zoom effect on hover in the Comparison tab */
+.comparison-zoom .o_kanban_card .o_field_image img {
+    transition: transform 0.3s ease-in-out;
+    cursor: zoom-in;
+}
+
+.comparison-zoom .o_kanban_card:hover .o_field_image img {
+    transform: scale(1.8);
+    z-index: 1000;
+}
