@@ -3,6 +3,7 @@
     "name": "Customer Image Workspace",
     "version": "1.0.0",
     "category": "Tools",
+    "author": "Popway Software",
     "summary": "Customer-centric image gallery, comparison and timeline",
     "depends": ["base", "contacts"],
     "data": [
