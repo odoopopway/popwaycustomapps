@@ -3,10 +3,11 @@
     "version": "1.0.0",
     "category": "Tools",
     "summary": """This module provides a customer-centric image gallery that allows you to manage, compare, and view customer images in a timeline. Features include:
+                 
                     Image gallery with zoom and editing features.
                     Customer image comparison tools.
                     Timeline view to track image updates.
-                  """,  
+                 """,  
     "author": "Popway Software",
     "depends": ["base", "contacts"],
     "data": [
@@ -31,6 +32,6 @@
     "installable": True,
     "website": "https://www.popway.in",
     "icon": "/image_hub/static/description/icon.png", 
-    "images": "/image_hub/static/description/cover_image.png", 
+    "images": ['static/description/banner.png'], 
     "license": "AGPL-3", 
 }
