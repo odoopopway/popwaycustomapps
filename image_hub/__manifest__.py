@@ -2,12 +2,12 @@
     "name": "Customer Image Workspace",
     "version": "1.0.0",
     "category": "Tools",
-    "summary": """<p>This module provides a <strong>customer-centric image gallery</strong> that allows you to manage, compare, and view customer images in a timeline. Features include:</p>
-                  <ul>
-                    <li>Image gallery with zoom and editing features.</li>
-                    <li>Customer image comparison tools.</li>
-                    <li>Timeline view to track image updates.</li>
-                  </ul>""",  
+    "summary": """This module provides a <strong>customer-centric image gallery</strong> that allows you to manage, compare, and view customer images in a timeline. Features include:
+                 
+                    Image gallery with zoom and editing features.
+                   Customer image comparison tools.
+                    Timeline view to track image updates.
+                  """,  
     "author": "Popway Software",
     "depends": ["base", "contacts"],
     "data": [
@@ -32,6 +32,6 @@
     "installable": True,
     "website": "https://www.popway.in",
     "icon": "/image_hub/static/description/icon.png", 
-    "images": "/image_hub/static/description/cover_image.png", 
+    "images": ['static/description/banner.png'], 
     "license": "AGPL-3", 
 }
