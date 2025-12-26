@@ -30,7 +30,7 @@
     },
     "application": True,
     "installable": True,
-    "website": "https://www.popwaysoftware.com",
+    "website": "https://www.popway.in",
     "icon": "/image_hub/static/description/icon.png", 
     "images": "/image_hub/static/description/cover_image.png", 
     "license": "AGPL-3", 
