@@ -32,6 +32,6 @@
     "installable": True,
     "website": "https://www.popwaysoftware.com",
     "icon": "/image_hub/static/description/icon.png", 
-    "cover_image": "/image_hub/static/description/cover_image.png", 
+    "images": "/image_hub/static/description/cover_image.png", 
     "license": "AGPL-3", 
 }
