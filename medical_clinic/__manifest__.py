@@ -59,6 +59,7 @@
         'views/medical_questions_views.xml',
         'views/medical_specialist_views.xml',
         'views/medical_time_shift_views.xml',
+        'views/medical_source_views.xml',
 
         'report/medical_prescription_report.xml',
         'report/medical_prescription_templates.xml',
@@ -73,10 +74,11 @@
             # Add your JS, CSS, Owl components if needed
             # 'your_module/static/src/js/custom.js',
             # 'your_module/static/src/css/style.css'
-            "medical_clinic/static/src/js/calendar_patch.js",
-             "medical_clinic/static/src/js/datetime_30_minute.js",
-             "medical_clinic/static/src/js/appointment_form_close.js",
-            "medical_clinic/static/src/css/calendar.css",
+                "medical_clinic/static/src/js/calendar_patch.js",
+                "medical_clinic/static/src/js/datetime_30_minute.js",
+                "medical_clinic/static/src/js/appointment_form_close.js",
+                "medical_clinic/static/src/css/calendar.css",
+                "medical_clinic/static/src/js/global_delete_confirm.js",
         ],
     },
 

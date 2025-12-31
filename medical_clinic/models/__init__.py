@@ -1,3 +1,4 @@
+from.import medical_source
 from.import patient
 from.import medical_questionnaire
 from.import medical_appointment

@@ -16,7 +16,9 @@ class MedicalPatients(models.Model):
     patient_age = fields.Integer(compute='_compute_patient_age', store=True, string="Age")
     gender = fields.Selection([('male', 'Male'), ('female', 'Female'), ('other', 'Other')], string="Gender")
     report_ids = fields.One2many('xray.report', 'patient_id', string='X-Ray')
-
+    source_id = fields.Many2one('medical.source',
+                                         string="Source ",
+                                         help=" Source name like facebook etc.")
     @api.depends('dob')
     def _compute_patient_age(self):
         today = date.today()

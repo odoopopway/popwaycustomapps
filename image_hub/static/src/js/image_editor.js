@@ -15,7 +15,7 @@ export class ImageEditor extends Component {
 
         const ctx = this.props?.action?.context || {};
         this.imageId = ctx.image_id;
-        this.imageUrl = `/web/image/customer.image/${this.imageId}/image_1920`;
+        this.imageUrl = `/web/image/customer.image/${this.imageId}/image_1920?unique=${Date.now()}`;
 
         this.canvasRef = useRef("canvas");
 

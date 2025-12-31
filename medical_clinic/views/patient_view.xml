@@ -42,7 +42,8 @@
                 <field name="dob" string="Date of Birth"/>
                 <field name="patient_age" string="Age"/>
                 <field name="patient_no" string="Patient No." readonly="1"/>
-                <field name="gender" widget="radio"/>
+                <field name="gender" widget="radio" string="Gender"/>
+                <field name="source_id" string="Source"/>
             </xpath>
 
             <!-- SAFER: Add Medical Questionnaire and X-Ray Reports pages by inserting directly into the notebook -->
@@ -70,9 +71,11 @@
                             <div class="d-flex align-items-start">
                                 <!-- Image Column -->
                                 <div class="me-2">
-                                    <img t-att-src="'/web/image/xray.report/' + record.id.raw_value + '/scan_image'"
-        class="o_kanban_image o_image_64_cover"
-        t-att-alt="record.image_filename.value or 'X-Ray'"/>
+                                     <field name="scan_image"
+                                    widget="image"
+                                    options="{'size': [64, 64], 'preview_image': 'scan_image'}"
+                                    class="o_kanban_image o_image_64_cover"/>
+
 
                                 </div>
                                 <!-- Details Column -->

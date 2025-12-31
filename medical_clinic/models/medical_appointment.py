@@ -3,6 +3,7 @@ from odoo.exceptions import ValidationError
 from datetime import timedelta
 from odoo.fields import Datetime
 from odoo.tools import float_compare
+from odoo.exceptions import UserError
 import pytz
 
 
@@ -118,7 +119,7 @@ class MedicalAppointment(models.Model):
     )
 
     # -------------------------------------------------------------------------
-    # VALIDATION: Max 10 appointments per date per shift    
+    # VALIDATION   
     # -------------------------------------------------------------------------
     @api.constrains('appointment_date')
     def _check_past_date(self):
@@ -257,11 +258,16 @@ class MedicalAppointment(models.Model):
         for vals in vals_list:
 
             # 🔴 Shift capacity validation
-            self._check_shift_limit(
-                vals.get('appointment_date'),
-                vals.get('shift_id'),
-                vals.get('doctor_id')
-            )
+            self._validate_doctor_time_rules(
+            vals.get('appointment_date'),
+            vals.get('doctor_id'),
+            vals.get('shift_id'),
+        )
+            # self._check_shift_limit(
+            #     vals.get('appointment_date'),
+            #     vals.get('shift_id'),
+            #     vals.get('doctor_id')
+            # )
 
             if vals.get('patient_id'):
                 patient = self.env['res.partner'].browse(vals['patient_id'])
@@ -305,13 +311,18 @@ class MedicalAppointment(models.Model):
             shift_id = vals.get('shift_id', rec.shift_id.id)
             doctor_id = vals.get('doctor_id', rec.doctor_id.id)
 
-
-            rec._check_shift_limit(
-                    appointment_date,
-                    shift_id,
-                    doctor_id,
-                    exclude_id=rec.id
-                )
+            rec._validate_doctor_time_rules(
+            appointment_date,
+            doctor_id,
+            shift_id,
+            exclude_id=rec.id
+        )
+            # rec._check_shift_limit(
+            #         appointment_date,
+            #         shift_id,
+            #         doctor_id,
+            #         exclude_id=rec.id
+            #     )
 
 
         return super().write(vals)
@@ -416,6 +427,72 @@ class MedicalAppointment(models.Model):
     # -------------------------------------------------------------------------
     # ACTIONS
     # -------------------------------------------------------------------------
+    def _validate_doctor_time_rules(self, appointment_date, doctor_id, shift_id, exclude_id=None):
+        """Validate doctor time rules: overlap + shift time"""
+        if not appointment_date or not doctor_id or not shift_id:
+            return
+            
+        # Convert string to datetime if needed
+        if isinstance(appointment_date, str):
+            appointment_date = fields.Datetime.from_string(appointment_date)
+        
+        doctor = self.env['hr.employee'].browse(doctor_id)
+        shift = self.env['medical.time.shift'].browse(shift_id)
+        
+        # 1️⃣ OVERLAP CHECK (30-minute slots)
+        start = appointment_date
+        end = start + timedelta(minutes=30)
+        
+        domain = [
+            ('doctor_id', '=', doctor.id),
+            ('state', '!=', 'cancelled'),
+            ('appointment_date', '<', end),
+            ('appointment_date', '>=', start - timedelta(minutes=29)),  # 29min buffer
+        ]
+        if exclude_id:
+            domain.append(('id', '!=', exclude_id))
+        
+        if self.search_count(domain):
+            raise UserError(  # Shows instantly on Save!
+                _("⚠️ Doctor %s is booked: %s - %s") % 
+                (doctor.name, start.strftime('%H:%M'), end.strftime('%H:%M'))
+            )
+        
+        # 2️⃣ SHIFT TIME VALIDATION
+        # 2️⃣ SHIFT VALIDATION (ANY SHIFT MATCH)
+        appt_time = self._get_local_appt_float_time(appointment_date)
+
+        valid_shift = False
+
+        for shift in doctor.time_shift_ids:
+            start_time = self._normalize_time(shift.start_time)
+            end_time = self._normalize_time(shift.end_time)
+
+            check_time = appt_time
+
+            # Overnight support
+            if end_time <= start_time:
+                end_time += 24
+                if check_time < start_time:
+                    check_time += 24
+
+            if start_time <= check_time <= end_time:
+                valid_shift = shift
+                break
+
+        if not valid_shift:
+            raise UserError(_(
+                "⏰ Appointment time %.2f is outside doctor's working hours"
+            ) % appt_time)
+
+        # Auto-fix shift if wrong one selected
+        if shift_id != valid_shift.id:
+            self.shift_id = valid_shift.id
+    def action_draft(self):
+        for rec in self:
+            if rec.state != '':
+                continue
+            rec.state = 'draft'
 
     def action_confirm(self):
         for rec in self:
@@ -442,3 +519,66 @@ class MedicalAppointment(models.Model):
 
     def action_cancel(self):
         self.state = 'cancelled'
+    # -------------------------------------------------------------------------
+    # Onchange
+    # -------------------------------------------------------------------------
+    @api.onchange('appointment_date', 'doctor_id', 'shift_id')
+    def _onchange_doctor_rules(self):
+        for rec in self:
+
+            if not rec.appointment_date or not rec.doctor_id:
+                return
+
+            warnings = []
+
+            # 1️⃣ Overlap check (30 minutes)
+            start = rec.appointment_date
+            end = start + timedelta(minutes=30)
+
+            overlap = self.env['medical.appointment'].search([
+                ('id', '!=', rec.id),
+                ('doctor_id', '=', rec.doctor_id.id),
+                ('state', '!=', 'cancelled'),
+                ('appointment_date', '<', end),
+                ('appointment_date', '>=', start - timedelta(minutes=29)),
+            ], limit=1)
+
+            if overlap:
+                warnings.append(
+                    _("Doctor %s already has an appointment in this time slot.")
+                    % rec.doctor_id.name
+                )
+                rec.appointment_date = False
+
+            # 2️⃣ Shift validation
+            if rec.appointment_date and rec.shift_id:
+
+                appt_time = rec._get_local_appt_float_time(rec.appointment_date)
+
+                shift = rec.shift_id
+                start_time = shift.start_time
+                end_time = shift.end_time
+
+                # Normalize floats like 9.30 → 9.5
+                start_time = int(start_time) + (start_time % 1) * 100 / 60
+                end_time = int(end_time) + (end_time % 1) * 100 / 60
+
+                # Overnight shift support
+                if end_time <= start_time:
+                    end_time += 24
+                    if appt_time < start_time:
+                        appt_time += 24
+
+                if not (start_time <= appt_time <= end_time):
+                    warnings.append(
+                        _("Appointment time must be within doctor's working shift.")
+                    )
+                    rec.appointment_date = False
+
+            if warnings:
+                return {
+                    'warning': {
+                        'title': _("Invalid Appointment"),
+                        'message': "\n".join(warnings),
+                    }
+                }

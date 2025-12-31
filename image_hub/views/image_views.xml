@@ -7,7 +7,7 @@
                 <sheet>
 
                     <group>
-                        <field name="partner_id" required="1"/>
+                        <field name="partner_id" string="patient" required="1"/>
                         <field name="category_id"/>
                         <field name="tag_ids" widget="many2many_tags"/>
                     </group>

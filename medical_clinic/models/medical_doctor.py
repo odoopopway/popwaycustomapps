@@ -34,7 +34,7 @@ class MedicalDoctor(models.Model):
     sex = fields.Selection([
         ('male', 'Male'),
         ('female', 'Female')
-    ], string="Sex", help="Gender of the doctor")
+    ], string="Gender", help="Gender of the doctor")
     time_shift_ids = fields.Many2many(
         'medical.time.shift',
         string="Time Shift",

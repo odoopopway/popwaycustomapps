@@ -57,6 +57,13 @@
                 <form string="Medical Appointment">
 
                     <header>
+
+                        <!-- Draft button: first step -->
+                        <button name="action_draft"
+                                type="object"
+                                string="Draft"
+                                class="oe_highlight"
+                                />
                         <button name="action_confirm" type="object" 
                                 string="Confirm"
                                 class="oe_highlight"
