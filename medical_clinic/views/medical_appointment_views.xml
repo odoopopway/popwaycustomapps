@@ -58,18 +58,25 @@
 
                     <header>
 
-                        <!-- Draft button: first step -->
-                        <button name="action_draft"
+                        
+
+                        <!-- Confirm: only after draft -->
+                        <button name="action_confirm"
                                 type="object"
-                                string="Draft"
-                                class="oe_highlight"
-                                />
-                        <button name="action_confirm" type="object" 
                                 string="Confirm"
                                 class="oe_highlight"
                                 invisible="state != 'draft'"/>
 
-                        <button name="action_done" type="object"
+                        <!-- Cancel: only after draft -->
+                        <button name="action_cancel"
+                                type="object"
+                                string="Cancel"
+                                class="oe_link"
+                                invisible="state != 'draft'"/>
+
+                        <!-- Done -->
+                        <button name="action_done"
+                                type="object"
                                 string="Done"
                                 class="oe_highlight"
                                 invisible="state != 'in_progress'"/>
@@ -81,14 +88,16 @@
 
                         <field name="state" widget="statusbar"
                                statusbar_visible="draft,confirmed,in_progress,done,cancelled"/>
-
+                        
                         <button name="action_open_patient_form"
                                 type="object"
                                 string="View Patient"
                                 icon="fa-user-md"
                                 class="oe_highlight"
                                 invisible="state != 'confirmed'"/>
+
                     </header>
+
 
                     <sheet>
 
@@ -98,30 +107,30 @@
 
                         <group string="Patient Info">
                             <group>
-                                <field name="patient_no"/>
-                                <field name="patient_id"/>
-                                <field name="gender"/>
+                                <field name="patient_no" readonly="1"/>
+                                <field name="patient_id" readonly="state in ['done', 'cancelled']"/>
+                                <field name="gender" readonly="state in ['done', 'cancelled']"/>
                             </group>
                             <group>
-                                <field name="age"/>
-                                <field name="mobile"/>
-                                <field name="user_name"/>
+                                <field name="age" readonly="state in ['done', 'cancelled']"/>
+                                <field name="mobile" readonly="state in ['done', 'cancelled']"/>
+                                <field name="user_name" readonly="state in ['done', 'cancelled']"/>
                             </group>
                         </group>
 
                         <group string="Appointment Details">
                             <group>
-                                <field name="doctor_id"/>
-                                <field name="time_shift_ids" widget="many2many_tags"/>
-                                <field name="shift_id"/>
-                                <field name="urgency"/>
+                                <field name="doctor_id" readonly="state in ['done', 'cancelled']"/>
+                                <field name="time_shift_ids" widget="many2many_tags" readonly="state in ['done', 'cancelled']"/>
+                                <field name="shift_id" readonly="state in ['done', 'cancelled']"/>
+                                <field name="urgency" readonly="state in ['done', 'cancelled']"/>
                                 <field name="patient_categ" widget="radio"
-                                       options="{'horizontal': True}"/>
+                                       options="{'horizontal': True}" readonly="state in ['done', 'cancelled']"/>
                             </group>
                             <group>
                                 <field name="appointment_date"  widget="datetime"
-                                       options="{'minute_step': 30}"/>
-                                <field name="treatments" widget="many2many_tags"/>
+                                       options="{'minute_step': 30}" readonly="state in ['done', 'cancelled']"/>
+                                <field name="treatments" widget="many2many_tags" readonly="state in ['done', 'cancelled']"/>
                             </group>
                         </group>
 
