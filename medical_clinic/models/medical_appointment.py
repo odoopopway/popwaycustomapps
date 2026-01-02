@@ -17,11 +17,11 @@ class MedicalAppointment(models.Model):
         compute="_compute_display_name",
         store=True
     )
-    appointment_end = fields.Datetime(
-    string="Appointment End",
-    compute="_compute_appointment_end",
-    store=True
-    )
+    # appointment_end = fields.Datetime(
+    # string="Appointment End",
+    # compute="_compute_appointment_end",
+    # store=True
+    # )
 
 
 
@@ -84,6 +84,21 @@ class MedicalAppointment(models.Model):
         'treatment.category',
         string='Treatments Category'
     )
+    slot_duration = fields.Selection(
+    [
+        ('15', '15 Minutes'),
+        ('30', '30 Minutes'),
+        ('60', '1 Hour'),
+        ('120', '2 Hours'),
+    ],
+    string="Slot Duration",
+    default='30',
+    required=True
+)
+    appointment_end = fields.Datetime(
+    string="Appointment End",
+    store=True
+)
 
     doctor_id = fields.Many2one(
         'hr.employee',
@@ -181,7 +196,16 @@ class MedicalAppointment(models.Model):
 
 
 
-       
+    @api.onchange('appointment_date', 'slot_duration')
+    def _onchange_slot_duration(self):
+        if self.appointment_date and self.slot_duration:
+            self.appointment_end = (
+                self.appointment_date
+                + timedelta(minutes=int(self.slot_duration))
+            )
+    
+
+
     @api.onchange("appointment_date")
     def _onchange_appointment_date(self):
         if not self.appointment_date:
@@ -196,6 +220,46 @@ class MedicalAppointment(models.Model):
                     "message": _("You cannot select a past appointment date."),
                 }
             }
+
+
+    
+    def write(self, vals):
+        for rec in self:
+            # 🔁 Resolve start datetime
+            start = vals.get('appointment_date', rec.appointment_date)
+            if isinstance(start, str):
+                start = fields.Datetime.from_string(start)
+
+            # 🔁 Handle calendar resize
+            if 'appointment_end' in vals and start:
+                end = vals.get('appointment_end')
+                if isinstance(end, str):
+                    end = fields.Datetime.from_string(end)
+
+                duration = int((end - start).total_seconds() / 60)
+
+                # Snap to allowed slots
+                if duration <= 15:
+                    slot = '15'
+                elif duration <= 30:
+                    slot = '30'
+                elif duration <= 60:
+                    slot = '60'
+                else:
+                    slot = '120'
+
+                vals['slot_duration'] = slot
+                vals['appointment_end'] = start + timedelta(minutes=int(slot))
+
+            # 🔒 Doctor + shift validation
+            rec._validate_doctor_time_rules(
+                start,
+                vals.get('doctor_id', rec.doctor_id.id),
+                vals.get('shift_id', rec.shift_id.id),
+                exclude_id=rec.id
+            )
+
+        return super().write(vals)
 
 
 
@@ -256,6 +320,15 @@ class MedicalAppointment(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+             start = vals.get('appointment_date')
+             slot = vals.get('slot_duration', '30')
+
+        if start:
+            if isinstance(start, str):
+                start = fields.Datetime.from_string(start)
+
+            # 🔒 slot_duration ALWAYS wins
+            vals['appointment_end'] = start + timedelta(minutes=int(slot))
 
             # 🔴 Shift capacity validation
             self._validate_doctor_time_rules(
@@ -302,21 +375,7 @@ class MedicalAppointment(models.Model):
     # WRITE (if date or shift is changed later)
     # -------------------------------------------------------------------------
 
-    def write(self, vals):
-        for rec in self:
-            appointment_date = vals.get(
-                'appointment_date',
-                rec.appointment_date
-            )
-            shift_id = vals.get('shift_id', rec.shift_id.id)
-            doctor_id = vals.get('doctor_id', rec.doctor_id.id)
-
-            rec._validate_doctor_time_rules(
-            appointment_date,
-            doctor_id,
-            shift_id,
-            exclude_id=rec.id
-        )
+   
             # rec._check_shift_limit(
             #         appointment_date,
             #         shift_id,
@@ -415,83 +474,104 @@ class MedicalAppointment(models.Model):
             apt = rec.appointment_no or ''
             rec.display_name = f"{apt} | {patient} | {mobile}"
 
-    @api.depends('appointment_date')
-    def _compute_appointment_end(self):
-        for rec in self:
-            rec.appointment_end = (
-                rec.appointment_date + timedelta(minutes=30)
-                if rec.appointment_date else False
-            )
+    # @api.depends('appointment_date')
+    # def _compute_appointment_end(self):
+    #     for rec in self:
+    #         rec.appointment_end = (
+    #             rec.appointment_date + timedelta(minutes=30)
+    #             if rec.appointment_date else False
+    #         )
 
 
     # -------------------------------------------------------------------------
     # ACTIONS
     # -------------------------------------------------------------------------
-    def _validate_doctor_time_rules(self, appointment_date, doctor_id, shift_id, exclude_id=None):
-        """Validate doctor time rules: overlap + shift time (timezone-aware)"""
+    def _get_appt_end(self, start, slot_duration):
+        return start + timedelta(minutes=int(slot_duration))
+
+    def _validate_doctor_time_rules(
+        self,
+        appointment_date,
+        doctor_id,
+        shift_id,
+        appointment_end=None,
+        exclude_id=None
+    ):
+        """Validate doctor overlap + shift time (resize-safe)"""
+
         if not appointment_date or not doctor_id or not shift_id:
             return
-            
-        # Convert string to datetime if needed
+
+        # Normalize datetime
         if isinstance(appointment_date, str):
             appointment_date = fields.Datetime.from_string(appointment_date)
-        
+
+        if appointment_end and isinstance(appointment_end, str):
+            appointment_end = fields.Datetime.from_string(appointment_end)
+
+        # Fallback: if end not provided → assume 30 min
+        if not appointment_end:
+            appointment_end = appointment_date + timedelta(minutes=30)
+
         doctor = self.env['hr.employee'].browse(doctor_id)
         shift = self.env['medical.time.shift'].browse(shift_id)
 
-        # -----------------------------
-        # 1️⃣ OVERLAP CHECK (timezone-aware)
-        # -----------------------------
         user_tz = pytz.timezone(self.env.user.tz or 'UTC')
-        local_dt = appointment_date.astimezone(user_tz)
-        local_start = local_dt
-        local_end = local_start + timedelta(minutes=30)
 
-        # Search all appointments for the doctor on the same day
-        day_start = local_start.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = local_start.replace(hour=23, minute=59, second=59, microsecond=0)
+        local_start = appointment_date.astimezone(user_tz)
+        local_end = appointment_end.astimezone(user_tz)
 
-        appointments = self.env['medical.appointment'].search([
+        # -----------------------------
+        # 1️⃣ OVERLAP CHECK (REAL RANGE)
+        # -----------------------------
+        domain = [
             ('doctor_id', '=', doctor.id),
             ('state', '!=', 'cancelled'),
-            ('appointment_date', '>=', day_start),
-            ('appointment_date', '<=', day_end),
-        ])
+        ]
+
+        if exclude_id:
+            domain.append(('id', '!=', exclude_id))
+
+        appointments = self.env['medical.appointment'].search(domain)
 
         for appt in appointments:
-            if exclude_id and appt.id == exclude_id:
-                continue
-            appt_local = appt.appointment_date.astimezone(user_tz)
-            appt_start = appt_local
-            appt_end = appt_start + timedelta(minutes=30)
-            # Check overlap
+            appt_start = appt.appointment_date.astimezone(user_tz)
+            appt_end = (
+                appt.appointment_end.astimezone(user_tz)
+                if appt.appointment_end
+                else appt_start + timedelta(minutes=int(appt.slot_duration or 30))
+            )
+
+            # 🔴 REAL overlap condition
             if local_start < appt_end and local_end > appt_start:
-                raise UserError(
-                    _("⚠️ Doctor %s is booked: %s - %s") %
-                    (doctor.name, appt_start.strftime('%H:%M'), appt_end.strftime('%H:%M'))
-                )
+                raise UserError(_(
+                    "⚠️ Doctor %(doc)s already booked\n"
+                    "%(start)s - %(end)s"
+                ) % {
+                    'doc': doctor.name,
+                    'start': appt_start.strftime('%H:%M'),
+                    'end': appt_end.strftime('%H:%M'),
+                })
 
         # -----------------------------
-        # 2️⃣ SHIFT TIME VALIDATION (existing logic)
+        # 2️⃣ SHIFT VALIDATION
         # -----------------------------
         appt_time = self._get_local_appt_float_time(appointment_date)
 
         valid_shift = False
-
-        for shift in doctor.time_shift_ids:
-            start_time = self._normalize_time(shift.start_time)
-            end_time = self._normalize_time(shift.end_time)
+        for s in doctor.time_shift_ids:
+            start_time = self._normalize_time(s.start_time)
+            end_time = self._normalize_time(s.end_time)
 
             check_time = appt_time
 
-            # Overnight support
             if end_time <= start_time:
                 end_time += 24
                 if check_time < start_time:
                     check_time += 24
 
             if start_time <= check_time <= end_time:
-                valid_shift = shift
+                valid_shift = s
                 break
 
         if not valid_shift:
@@ -499,9 +579,11 @@ class MedicalAppointment(models.Model):
                 "⏰ Appointment time %.2f is outside doctor's working hours"
             ) % appt_time)
 
-        # Auto-fix shift if wrong one selected
         if shift_id != valid_shift.id:
             self.shift_id = valid_shift.id
+
+
+
     def action_draft(self):
         for rec in self:
             if rec.state != '':

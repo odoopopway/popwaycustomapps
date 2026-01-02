@@ -128,6 +128,7 @@
                                        options="{'horizontal': True}" readonly="state in ['done', 'cancelled']"/>
                             </group>
                             <group>
+                                <field name="slot_duration" readonly="state in ['done','cancelled']"/>
                                 <field name="appointment_date"  widget="datetime"
                                        options="{'minute_step': 30}" readonly="state in ['done', 'cancelled']"/>
                                 <field name="treatments" widget="many2many_tags" readonly="state in ['done', 'cancelled']"/>

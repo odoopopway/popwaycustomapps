@@ -2,7 +2,7 @@
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
-from datetime import datetime, date
+from datetime import datetime, date,time
 import pytz
 
 
@@ -163,16 +163,22 @@ class MedicalPrescription(models.Model):
 
 
 
-    @api.depends('appointment_id')
+    @api.depends()
     def _compute_appointment_ids(self):
-        """Computes and assigns the `appointment_ids` field for each record.
-        This method searches for all `medical.appointment` records that have
-        a state of `new` and a date equal to today's date. It then updates
-        the `appointment_ids` field of each `MedicalPrescription` record
-        with the IDs of these found appointments."""
+        today = fields.Date.today()
+
+        start_dt = datetime.combine(today, time.min)
+        end_dt = datetime.combine(today, time.max)
+
+        appointments = self.env['medical.appointment'].search([
+            ('state', '=', 'confirmed'),
+            ('appointment_date', '>=', start_dt),
+            ('appointment_date', '<=', end_dt),
+        ])
+
         for rec in self:
-            rec.appointment_ids = self.env['medical.appointment'].search(
-                [('state', '=', 'confirmed'), ('appointment_date', '=', fields.Date.today())]).ids
+            rec.appointment_ids = appointments.ids
+
 
     def action_prescribed(self):
         """Marks the prescription and its associated appointment as `done`.
