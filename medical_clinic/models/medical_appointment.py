@@ -97,6 +97,7 @@ class MedicalAppointment(models.Model):
 )
     appointment_end = fields.Datetime(
     string="Appointment End",
+    compute="_compute_appointment_end",
     store=True
 )
 
@@ -144,7 +145,15 @@ class MedicalAppointment(models.Model):
                 raise ValidationError(
                     _("You cannot create an appointment in the past.")
                 )
-
+    @api.depends('appointment_date', 'slot_duration')
+    def _compute_appointment_end(self):
+        for rec in self:
+            if rec.appointment_date and rec.slot_duration:
+                rec.appointment_end = rec.appointment_date + timedelta(
+                    minutes=int(rec.slot_duration)
+                )
+            else:
+                rec.appointment_end = False
     @api.constrains('appointment_date', 'doctor_id')
     def _check_doctor_rules(self):
         for rec in self:
@@ -196,13 +205,16 @@ class MedicalAppointment(models.Model):
 
 
 
-    @api.onchange('appointment_date', 'slot_duration')
-    def _onchange_slot_duration(self):
-        if self.appointment_date and self.slot_duration:
-            self.appointment_end = (
-                self.appointment_date
-                + timedelta(minutes=int(self.slot_duration))
-            )
+    @api.depends('appointment_date', 'slot_duration')
+    def _compute_appointment_end(self):
+        for rec in self:
+            if rec.appointment_date and rec.slot_duration:
+                rec.appointment_end = rec.appointment_date + timedelta(
+                    minutes=int(rec.slot_duration)
+                )
+            else:
+                rec.appointment_end = False
+
     
 
 
@@ -225,37 +237,35 @@ class MedicalAppointment(models.Model):
     
     def write(self, vals):
         for rec in self:
-            # 🔁 Resolve start datetime
             start = vals.get('appointment_date', rec.appointment_date)
-            if isinstance(start, str):
-                start = fields.Datetime.from_string(start)
 
-            # 🔁 Handle calendar resize
+            # 🟢 ONLY when calendar resized (end explicitly changed)
             if 'appointment_end' in vals and start:
                 end = vals.get('appointment_end')
+
+                if isinstance(start, str):
+                    start = fields.Datetime.from_string(start)
                 if isinstance(end, str):
                     end = fields.Datetime.from_string(end)
 
                 duration = int((end - start).total_seconds() / 60)
 
-                # Snap to allowed slots
+                # 🔁 Snap to allowed slots
                 if duration <= 15:
-                    slot = '15'
+                    vals['slot_duration'] = '15'
                 elif duration <= 30:
-                    slot = '30'
+                    vals['slot_duration'] = '30'
                 elif duration <= 60:
-                    slot = '60'
+                    vals['slot_duration'] = '60'
                 else:
-                    slot = '120'
+                    vals['slot_duration'] = '120'
 
-                vals['slot_duration'] = slot
-                vals['appointment_end'] = start + timedelta(minutes=int(slot))
-
-            # 🔒 Doctor + shift validation
+            # 🔒 Validate rules (safe for both form + calendar)
             rec._validate_doctor_time_rules(
                 start,
                 vals.get('doctor_id', rec.doctor_id.id),
                 vals.get('shift_id', rec.shift_id.id),
+                vals.get('appointment_end', rec.appointment_end),
                 exclude_id=rec.id
             )
 
@@ -264,9 +274,6 @@ class MedicalAppointment(models.Model):
 
 
 
-
-        
-  
 
     def _check_shift_limit(self, appointment_date, shift_id, doctor_id, exclude_id=False):
         if not appointment_date or not shift_id or not doctor_id:
@@ -320,22 +327,21 @@ class MedicalAppointment(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
-             start = vals.get('appointment_date')
-             slot = vals.get('slot_duration', '30')
+            start = vals.get('appointment_date')
+            slot = vals.get('slot_duration', '30')
 
-        if start:
-            if isinstance(start, str):
-                start = fields.Datetime.from_string(start)
+            if start:
+                if isinstance(start, str):
+                    start = fields.Datetime.from_string(start)
 
-            # 🔒 slot_duration ALWAYS wins
-            vals['appointment_end'] = start + timedelta(minutes=int(slot))
+                vals['appointment_end'] = start + timedelta(minutes=int(slot))
 
-            # 🔴 Shift capacity validation
-            self._validate_doctor_time_rules(
-            vals.get('appointment_date'),
-            vals.get('doctor_id'),
-            vals.get('shift_id'),
-        )
+                self._validate_doctor_time_rules(
+                    vals.get('appointment_date'),
+                    vals.get('doctor_id'),
+                    vals.get('shift_id'),
+                    vals.get('appointment_end')
+                )
             # self._check_shift_limit(
             #     vals.get('appointment_date'),
             #     vals.get('shift_id'),
@@ -549,8 +555,8 @@ class MedicalAppointment(models.Model):
                     "%(start)s - %(end)s"
                 ) % {
                     'doc': doctor.name,
-                    'start': appt_start.strftime('%H:%M'),
-                    'end': appt_end.strftime('%H:%M'),
+                    'start': appt_start.strftime('%I:%M %p').lstrip('0'),
+                    'end': appt_end.strftime('%I:%M %p').lstrip('0'),
                 })
 
         # -----------------------------
