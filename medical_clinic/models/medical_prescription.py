@@ -2,7 +2,9 @@
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
-from datetime import date
+from datetime import datetime, date
+import pytz
+
 
 
 class MedicalPrescription(models.Model):
@@ -69,9 +71,9 @@ class MedicalPrescription(models.Model):
         domain="[('is_doctor', '=', True)]",
         help="Select a different doctor if referring the patient"
     )
-    next_appointment_date = fields.Date(
-        string="Next Appointment Date",
-        help="Date for the next appointment"
+    next_appointment_date = fields.Datetime(
+    string="Next Appointment Date & Time",
+    help="Date and time for the next appointment"
     )
     # grand_total = fields.Float(compute="_compute_grand_total",
     #                            string="Grand Total",
@@ -97,50 +99,69 @@ class MedicalPrescription(models.Model):
         return res
 
     def _update_or_create_appointment(self):
-        """Creates a new appointment instead of modifying the current one."""
+        """Create next appointment like a normal appointment with auto shift selection."""
         if not self.next_appointment_date or not self.patient_id:
-            return  # Skip if no next appointment date is given
+            return
 
-        assigned_doctor = self.referred_doctor_id or self.prescribed_doctor_id
-        if not assigned_doctor:
-            return  # Skip if no doctor is assigned
+        # Determine the doctor: referred doctor or prescribed doctor
+        doctor = self.referred_doctor_id or self.prescribed_doctor_id
+        if not doctor:
+            return
 
-        today_appointment = self.env['medical.appointment'].search([
-            ('patient_id', '=', self.patient_id.id),
-            ('appointment_date', '=', fields.Date.today()),
-            ('state', '!=', 'done')
-        ], limit=1)
+        # --- CONVERT TO LOCAL TIME FLOAT ---
+        appt_dt = self.next_appointment_date
+        user_tz = pytz.timezone(self.env.user.tz or 'UTC')
 
-        # Ensure that today's appointment is not modified
-        if today_appointment:
-            # Create a new appointment for the next visit
-            self.env['medical.appointment'].create({
-                'patient_id': self.patient_id.id,
-                'appointment_date': self.next_appointment_date,
-                'doctor_id': assigned_doctor.id,
-                'state': 'draft',  # Set as draft since it's a future appointment
-            })
-        else:
-            # If no active appointment exists today, update or create as usual
-            upcoming_appointment = self.env['medical.appointment'].search([
-                ('patient_id', '=', self.patient_id.id),
-                ('appointment_date', '>', fields.Date.today()),
-                ('state', '!=', 'done')
-            ], limit=1, order="appointment_date asc")
+        # Ensure datetime is timezone-aware
+        if appt_dt.tzinfo is None:
+            appt_dt = pytz.UTC.localize(appt_dt)
 
-            if upcoming_appointment:
-                upcoming_appointment.write({
-                    'appointment_date': self.next_appointment_date,
-                    'doctor_id': assigned_doctor.id
-                })
-            else:
-                # Create a new future appointment
-                self.env['medical.appointment'].create({
-                    'patient_id': self.patient_id.id,
-                    'appointment_date': self.next_appointment_date,
-                    'doctor_id': assigned_doctor.id,
-                    'state': 'draft',
-                })
+        local_dt = appt_dt.astimezone(user_tz)
+        appt_time = local_dt.hour + local_dt.minute / 60.0
+
+        # --- PICK SHIFT BASED ON APPOINTMENT TIME ---
+        selected_shift = False
+        for shift in doctor.time_shift_ids:
+            # Normalize shift start/end times (float like 9.30 → 9.5)
+            start_time = int(shift.start_time) + (shift.start_time % 1) * 100 / 60
+            end_time = int(shift.end_time) + (shift.end_time % 1) * 100 / 60
+            check_time = appt_time
+
+            # Overnight shift support
+            if end_time <= start_time:
+                end_time += 24
+                if check_time < start_time:
+                    check_time += 24
+
+            if start_time <= check_time <= end_time:
+                selected_shift = shift
+                break
+
+        if not selected_shift:
+            raise UserError(_(
+                "⏰ Selected next appointment time %.2f is outside doctor's working hours"
+            ) % appt_time)
+
+        # --- VALIDATE TIME RULES (overlap + shift) ---
+        self.env['medical.appointment']._validate_doctor_time_rules(
+            appointment_date=self.next_appointment_date,
+            doctor_id=doctor.id,
+            shift_id=selected_shift.id,
+            exclude_id=False
+        )
+
+        # --- CREATE NEXT APPOINTMENT ---
+        self.env['medical.appointment'].create({
+            'patient_id': self.patient_id.id,
+            'appointment_date': self.next_appointment_date,
+            'doctor_id': doctor.id,
+            'shift_id': selected_shift.id,
+            'state': 'draft',
+        })
+
+
+
+
 
     @api.depends('appointment_id')
     def _compute_appointment_ids(self):

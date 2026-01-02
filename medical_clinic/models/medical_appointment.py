@@ -428,7 +428,7 @@ class MedicalAppointment(models.Model):
     # ACTIONS
     # -------------------------------------------------------------------------
     def _validate_doctor_time_rules(self, appointment_date, doctor_id, shift_id, exclude_id=None):
-        """Validate doctor time rules: overlap + shift time"""
+        """Validate doctor time rules: overlap + shift time (timezone-aware)"""
         if not appointment_date or not doctor_id or not shift_id:
             return
             
@@ -438,28 +438,42 @@ class MedicalAppointment(models.Model):
         
         doctor = self.env['hr.employee'].browse(doctor_id)
         shift = self.env['medical.time.shift'].browse(shift_id)
-        
-        # 1️⃣ OVERLAP CHECK (30-minute slots)
-        start = appointment_date
-        end = start + timedelta(minutes=30)
-        
-        domain = [
+
+        # -----------------------------
+        # 1️⃣ OVERLAP CHECK (timezone-aware)
+        # -----------------------------
+        user_tz = pytz.timezone(self.env.user.tz or 'UTC')
+        local_dt = appointment_date.astimezone(user_tz)
+        local_start = local_dt
+        local_end = local_start + timedelta(minutes=30)
+
+        # Search all appointments for the doctor on the same day
+        day_start = local_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = local_start.replace(hour=23, minute=59, second=59, microsecond=0)
+
+        appointments = self.env['medical.appointment'].search([
             ('doctor_id', '=', doctor.id),
             ('state', '!=', 'cancelled'),
-            ('appointment_date', '<', end),
-            ('appointment_date', '>=', start - timedelta(minutes=29)),  # 29min buffer
-        ]
-        if exclude_id:
-            domain.append(('id', '!=', exclude_id))
-        
-        if self.search_count(domain):
-            raise UserError(  # Shows instantly on Save!
-                _("⚠️ Doctor %s is booked: %s - %s") % 
-                (doctor.name, start.strftime('%H:%M'), end.strftime('%H:%M'))
-            )
-        
-        # 2️⃣ SHIFT TIME VALIDATION
-        # 2️⃣ SHIFT VALIDATION (ANY SHIFT MATCH)
+            ('appointment_date', '>=', day_start),
+            ('appointment_date', '<=', day_end),
+        ])
+
+        for appt in appointments:
+            if exclude_id and appt.id == exclude_id:
+                continue
+            appt_local = appt.appointment_date.astimezone(user_tz)
+            appt_start = appt_local
+            appt_end = appt_start + timedelta(minutes=30)
+            # Check overlap
+            if local_start < appt_end and local_end > appt_start:
+                raise UserError(
+                    _("⚠️ Doctor %s is booked: %s - %s") %
+                    (doctor.name, appt_start.strftime('%H:%M'), appt_end.strftime('%H:%M'))
+                )
+
+        # -----------------------------
+        # 2️⃣ SHIFT TIME VALIDATION (existing logic)
+        # -----------------------------
         appt_time = self._get_local_appt_float_time(appointment_date)
 
         valid_shift = False
@@ -516,6 +530,9 @@ class MedicalAppointment(models.Model):
 
     def action_done(self):
         self.state = 'done'
+    def _normalize_time(self, value):
+        """Convert 9.30 → 9.5"""
+        return int(value) + (value % 1) * 100 / 60
 
     def action_cancel(self):
         self.state = 'cancelled'
