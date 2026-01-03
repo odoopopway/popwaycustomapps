@@ -237,6 +237,12 @@ class MedicalAppointment(models.Model):
     
     def write(self, vals):
         for rec in self:
+            if rec.state == 'done' and any(
+              field in vals for field in ['appointment_date', 'appointment_end']
+                ):
+              raise UserError(
+                _("❌ You cannot modify or move a completed appointment.")
+            )
             start = vals.get('appointment_date', rec.appointment_date)
 
             # 🟢 ONLY when calendar resized (end explicitly changed)
@@ -582,8 +588,9 @@ class MedicalAppointment(models.Model):
 
         if not valid_shift:
             raise UserError(_(
-                "⏰ Appointment time %.2f is outside doctor's working hours"
-            ) % appt_time)
+                "⏰ Appointment time %s is outside doctor's working hours"
+            ) % self._float_time_to_12h(appt_time))
+
 
         if shift_id != valid_shift.id:
             self.shift_id = valid_shift.id
@@ -687,3 +694,16 @@ class MedicalAppointment(models.Model):
                         'message': "\n".join(warnings),
                     }
                 }
+    def _float_time_to_12h(self, float_time):
+        """Convert float time (e.g. 23.75) to 12-hour format (11:45 PM)"""
+        hours = int(float_time)
+        minutes = int(round((float_time - hours) * 60))
+
+        if minutes == 60:
+            hours += 1
+            minutes = 0
+
+        suffix = 'AM' if hours < 12 else 'PM'
+        display_hour = hours % 12 or 12
+
+        return f"{display_hour}:{minutes:02d} {suffix}"

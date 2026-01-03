@@ -139,8 +139,9 @@ class MedicalPrescription(models.Model):
 
         if not selected_shift:
             raise UserError(_(
-                "⏰ Selected next appointment time %.2f is outside doctor's working hours"
-            ) % appt_time)
+            "⏰ Appointment time %s is outside doctor's working hours"
+        ) % self._float_time_to_12h(appt_time))
+
 
         # --- VALIDATE TIME RULES (overlap + shift) ---
         self.env['medical.appointment']._validate_doctor_time_rules(
@@ -302,6 +303,19 @@ class MedicalPrescription(models.Model):
             'default_treatment_name': self.treatment_id.name,
             'default_treatment_cost': self.cost
         }).action_open_patient_payments()
+    def _float_time_to_12h(self, float_time):
+        """Convert float time (e.g. 23.75) to 12-hour format (11:45 PM)"""
+        hours = int(float_time)
+        minutes = int(round((float_time - hours) * 60))
+
+        if minutes == 60:
+            hours += 1
+            minutes = 0
+
+        suffix = 'AM' if hours < 12 else 'PM'
+        display_hour = hours % 12 or 12
+
+        return f"{display_hour}:{minutes:02d} {suffix}"
 
 
 
